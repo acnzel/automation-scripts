@@ -74,8 +74,6 @@ def format_slack_message(schedule_data):
         6: '일'
     }
 
-    # 월별로 그룹화하여 표시
-    current_month = None
     kst = pytz.timezone('Asia/Seoul')
 
     for item in schedule_data:
@@ -83,31 +81,15 @@ def format_slack_message(schedule_data):
         date_obj = datetime.strptime(item['date'], '%Y-%m-%d')
         date_obj = kst.localize(date_obj)
 
-        year = date_obj.year
-        month = date_obj.month
-        day = date_obj.day
         weekday = date_obj.weekday()
-
-        month_str = f"{year}년 {month:02d}월"
-        day_str = f"{month:02d}월 {day:02d}일 ({weekday_map[weekday]})"
-
-        # 월이 바뀌면 월 헤더 추가
-        if current_month != month_str:
-            current_month = month_str
-            blocks.append({
-                'type': 'section',
-                'text': {
-                    'type': 'mrkdwn',
-                    'text': f"*{month_str}*"
-                }
-            })
+        weekday_str = weekday_map[weekday]
 
         # 날짜와 담당자 표시
         blocks.append({
             'type': 'section',
             'text': {
                 'type': 'mrkdwn',
-                'text': f"• `{day_str}` - {item['member']}"
+                'text': f"• `{item['date']} ({weekday_str})` - {item['member']}"
             }
         })
 
