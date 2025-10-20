@@ -1,0 +1,15 @@
+{
+  "name": "automation-scripts",
+  "version": "1.0.0",
+  "description": "Automation scripts for monitoring and notifications",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  },
+  "devDependencies": {
+    "vercel": "^33.0.0"
+  }
+}

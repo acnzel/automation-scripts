@@ -1,0 +1,7 @@
+python-dotenv
+requests
+supabase
+pytz
+google-play-scraper
+beautifulsoup4
+dotenv
