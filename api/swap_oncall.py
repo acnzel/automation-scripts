@@ -176,11 +176,13 @@ def send_delayed_response(response_url, member1, member2, today_str):
     짧은 지연 후 실제 처리를 수행하고 response_url로 결과 전송
     이 함수는 즉시 반환되고, 내부에서 별도로 처리
     """
+    import sys
     try:
         # 약간의 지연을 주어 메인 응답이 먼저 전송되도록 함
         time.sleep(1.5)
 
-        print(f"Starting swap process for {member1} and {member2}")
+        sys.stderr.write(f"[DEBUG] Starting swap process for {member1} and {member2}\n")
+        sys.stderr.flush()
 
         # 각 멤버의 가장 가까운 미래 스케줄 조회
         schedule1 = get_nearest_future_schedule(member1, today_str)
@@ -235,16 +237,21 @@ def send_delayed_response(response_url, member1, member2, today_str):
         )
 
         # response_url로 결과 전송
-        print(f"Sending result to response_url: {response_url}")
-        print(f"Response payload: {json.dumps(slack_response, ensure_ascii=False)}")
+        sys.stderr.write(f"[DEBUG] About to send result to response_url\n")
+        sys.stderr.flush()
+
         result = requests.post(response_url, json=slack_response, timeout=10)
-        print(f"Response sent successfully, status code: {result.status_code}")
-        print(f"Response body: {result.text}")
+
+        sys.stderr.write(f"[DEBUG] Response sent, status: {result.status_code}\n")
+        sys.stderr.write(f"[DEBUG] Response body: {result.text}\n")
+        sys.stderr.flush()
 
     except Exception as e:
-        print(f"Error in background processing: {e}")
+        import sys
+        sys.stderr.write(f"[ERROR] Exception in background processing: {e}\n")
         import traceback
-        traceback.print_exc()
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
 
         error_response = {
             'response_type': 'in_channel',
@@ -252,10 +259,12 @@ def send_delayed_response(response_url, member1, member2, today_str):
         }
 
         try:
-            requests.post(response_url, json=error_response, timeout=10)
-            print(f"Error response sent")
+            result = requests.post(response_url, json=error_response, timeout=10)
+            sys.stderr.write(f"[DEBUG] Error response sent, status: {result.status_code}\n")
+            sys.stderr.flush()
         except Exception as req_error:
-            print(f"Failed to send error response: {req_error}")
+            sys.stderr.write(f"[ERROR] Failed to send error response: {req_error}\n")
+            sys.stderr.flush()
 
 class handler(BaseHTTPRequestHandler):
     """Vercel Serverless Function 핸들러"""
@@ -332,13 +341,17 @@ class handler(BaseHTTPRequestHandler):
 
             print(f"Immediate response sent")
 
-            # future가 완료될 때까지 기다림 (최대 10초)
+            # future가 완료될 때까지 기다림 (최대 15초)
             # 이렇게 하면 serverless function이 종료되기 전에 작업이 완료됨
             try:
-                future.result(timeout=10)
-                print(f"Background task completed")
+                future.result(timeout=15)
+                print(f"Background task completed successfully")
+            except TimeoutError:
+                print(f"Background task timed out after 15 seconds")
             except Exception as e:
                 print(f"Background task error: {e}")
+                import traceback
+                traceback.print_exc()
 
         except Exception as e:
             print(f"Error in handler: {e}")
