@@ -71,24 +71,31 @@ def swap_schedules(original_schedule1, original_schedule2):
         sys.stderr.flush()
 
         # 첫 번째 스케줄 업데이트: schedule1에 member2 할당
+        # count='exact'를 사용하여 업데이트된 행 수 확인
         result1 = supabase.table('oncall_rotation') \
-            .update({'member': member2}) \
+            .update({'member': member2}, count='exact') \
             .eq('id', original_schedule1['id']) \
             .execute()
 
         sys.stderr.write(f"[SWAP] Updated id={original_schedule1['id']} to {member2}\n")
-        sys.stderr.write(f"[SWAP] Result1 data: {result1.data}\n")
+        sys.stderr.write(f"[SWAP] Result1: data={result1.data}, count={result1.count}\n")
         sys.stderr.flush()
 
         # 두 번째 스케줄 업데이트: schedule2에 member1 할당
         result2 = supabase.table('oncall_rotation') \
-            .update({'member': member1}) \
+            .update({'member': member1}, count='exact') \
             .eq('id', original_schedule2['id']) \
             .execute()
 
         sys.stderr.write(f"[SWAP] Updated id={original_schedule2['id']} to {member1}\n")
-        sys.stderr.write(f"[SWAP] Result2 data: {result2.data}\n")
+        sys.stderr.write(f"[SWAP] Result2: data={result2.data}, count={result2.count}\n")
         sys.stderr.flush()
+
+        # 업데이트 확인
+        if result1.count == 0 or result2.count == 0:
+            sys.stderr.write(f"[ERROR] Update failed: result1.count={result1.count}, result2.count={result2.count}\n")
+            sys.stderr.flush()
+            return False
 
         return True
     except Exception as e:
