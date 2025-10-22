@@ -196,7 +196,7 @@ def send_delayed_response(response_url, member1, member2, today_str):
     import sys
     try:
         # 약간의 지연을 주어 메인 응답이 먼저 전송되도록 함
-        time.sleep(1.0)
+        time.sleep(3.1)
 
         sys.stderr.write(f"[DEBUG] Starting swap process for {member1} and {member2}\n")
         sys.stderr.flush()
