@@ -5,6 +5,8 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs
 from supabase import create_client
 import pytz
+import requests
+import threading
 
 # Supabase 클라이언트 초기화
 supabase = create_client(
@@ -158,25 +160,35 @@ def format_slack_response(success, member1, member2, schedule1, schedule2, error
         'blocks': blocks
     }
 
-def process_swap(member1, member2, today_str):
-    """스케줄 교체를 처리하고 결과 반환"""
+def process_swap_in_background(response_url, member1, member2, today_str):
+    """백그라운드에서 스케줄 교체를 처리하고 response_url로 결과 전송"""
     try:
+        print(f"Starting background swap process for {member1} and {member2}")
+
         # 각 멤버의 가장 가까운 미래 스케줄 조회
         schedule1 = get_nearest_future_schedule(member1, today_str)
         schedule2 = get_nearest_future_schedule(member2, today_str)
 
         # 스케줄 존재 여부 확인
         if not schedule1:
-            return format_slack_response(
+            error_response = format_slack_response(
                 False, member1, member2, None, None,
                 f"'{member1}'의 향후 온콜 일정을 찾을 수 없습니다."
             )
+            print(f"Schedule not found for {member1}, sending error response")
+            result = requests.post(response_url, json=error_response, timeout=5)
+            print(f"Response sent, status code: {result.status_code}")
+            return
 
         if not schedule2:
-            return format_slack_response(
+            error_response = format_slack_response(
                 False, member1, member2, None, None,
                 f"'{member2}'의 향후 온콜 일정을 찾을 수 없습니다."
             )
+            print(f"Schedule not found for {member2}, sending error response")
+            result = requests.post(response_url, json=error_response, timeout=5)
+            print(f"Response sent, status code: {result.status_code}")
+            return
 
         # 원본 스케줄 정보 저장 (응답 메시지용)
         original_schedule1 = {
@@ -190,22 +202,38 @@ def process_swap(member1, member2, today_str):
             'member': schedule2['member']
         }
 
+        print(f"Found schedules - {member1}: {schedule1['date']}, {member2}: {schedule2['date']}")
+
         # 스케줄 교체
         success = swap_schedules(schedule1, schedule2)
+        print(f"Swap result: {success}")
 
-        # 응답 생성 및 반환
-        return format_slack_response(
+        # 응답 생성
+        slack_response = format_slack_response(
             success, member1, member2,
             original_schedule1, original_schedule2,
             "데이터베이스 업데이트 중 오류가 발생했습니다." if not success else None
         )
 
+        # response_url로 결과 전송
+        print(f"Sending result to response_url: {response_url}")
+        result = requests.post(response_url, json=slack_response, timeout=5)
+        print(f"Response sent successfully, status code: {result.status_code}")
+
     except Exception as e:
-        print(f"Error in swap processing: {e}")
-        return {
+        print(f"Error in background processing: {e}")
+        import traceback
+        traceback.print_exc()
+
+        error_response = {
             'response_type': 'in_channel',
             'text': f'⚠️ 오류가 발생했습니다: {str(e)}'
         }
+
+        try:
+            requests.post(response_url, json=error_response, timeout=5)
+        except Exception as req_error:
+            print(f"Failed to send error response: {req_error}")
 
 class handler(BaseHTTPRequestHandler):
     """Vercel Serverless Function 핸들러"""
@@ -236,6 +264,12 @@ class handler(BaseHTTPRequestHandler):
             # 명령어 텍스트 추출 (예: "엔도 로쿤")
             command_text = params.get('text', [''])[0]
 
+            # response_url 추출 (백그라운드 작업 결과를 보낼 URL)
+            response_url = params.get('response_url', [''])[0]
+
+            print(f"Received command: {command_text}")
+            print(f"Response URL: {response_url}")
+
             # 멤버 이름 파싱
             members = parse_command_text(command_text)
 
@@ -256,17 +290,33 @@ class handler(BaseHTTPRequestHandler):
             today = get_kst_now()
             today_str = format_date(today)
 
-            # 동기적으로 스케줄 교체 처리
-            response = process_swap(member1, member2, today_str)
-
-            # 응답 반환
+            # 즉시 200 응답 반환 (Slack 3초 타임아웃 방지)
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(json.dumps(response, ensure_ascii=False).encode('utf-8'))
+
+            immediate_response = {
+                'response_type': 'in_channel',
+                'text': f'⏳ {member1}와 {member2}의 온콜 일정을 변경하고 있습니다...'
+            }
+            self.wfile.write(json.dumps(immediate_response, ensure_ascii=False).encode('utf-8'))
+
+            print(f"Immediate response sent, starting background thread")
+
+            # 백그라운드 스레드에서 실제 작업 처리
+            thread = threading.Thread(
+                target=process_swap_in_background,
+                args=(response_url, member1, member2, today_str),
+                daemon=False  # 메인 프로세스가 종료되어도 스레드 유지
+            )
+            thread.start()
+
+            print(f"Background thread started")
 
         except Exception as e:
             print(f"Error in handler: {e}")
+            import traceback
+            traceback.print_exc()
 
             # 에러 응답
             self.send_response(500)
