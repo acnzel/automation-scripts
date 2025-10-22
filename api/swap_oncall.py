@@ -196,7 +196,7 @@ def send_delayed_response(response_url, member1, member2, today_str):
     import sys
     try:
         # 약간의 지연을 주어 메인 응답이 먼저 전송되도록 함
-        time.sleep(3.0)
+        time.sleep(1.0)
 
         sys.stderr.write(f"[DEBUG] Starting swap process for {member1} and {member2}\n")
         sys.stderr.flush()
@@ -343,12 +343,6 @@ class handler(BaseHTTPRequestHandler):
             today = get_kst_now()
             today_str = format_date(today)
 
-            # ThreadPoolExecutor를 사용하여 백그라운드 작업 시작
-            executor = ThreadPoolExecutor(max_workers=1)
-            future = executor.submit(send_delayed_response, response_url, member1, member2, today_str)
-
-            print(f"Background task submitted")
-
             # 즉시 200 응답 반환 (Slack 3초 타임아웃 방지)
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -361,6 +355,12 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(immediate_response, ensure_ascii=False).encode('utf-8'))
 
             print(f"Immediate response sent")
+
+            # 응답 후 ThreadPoolExecutor를 사용하여 백그라운드 작업 시작
+            executor = ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(send_delayed_response, response_url, member1, member2, today_str)
+
+            print(f"Background task submitted")
 
             # future가 완료될 때까지 기다림 (최대 15초)
             # 이렇게 하면 serverless function이 종료되기 전에 작업이 완료됨
