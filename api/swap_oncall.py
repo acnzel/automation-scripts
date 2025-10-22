@@ -6,7 +6,8 @@ from urllib.parse import parse_qs
 from supabase import create_client
 import pytz
 import requests
-import threading
+from concurrent.futures import ThreadPoolExecutor
+import time
 
 # Supabase 클라이언트 초기화
 supabase = create_client(
@@ -160,10 +161,16 @@ def format_slack_response(success, member1, member2, schedule1, schedule2, error
         'blocks': blocks
     }
 
-def process_swap_in_background(response_url, member1, member2, today_str):
-    """백그라운드에서 스케줄 교체를 처리하고 response_url로 결과 전송"""
+def send_delayed_response(response_url, member1, member2, today_str):
+    """
+    짧은 지연 후 실제 처리를 수행하고 response_url로 결과 전송
+    이 함수는 즉시 반환되고, 내부에서 별도로 처리
+    """
     try:
-        print(f"Starting background swap process for {member1} and {member2}")
+        # 약간의 지연을 주어 메인 응답이 먼저 전송되도록 함
+        time.sleep(0.5)
+
+        print(f"Starting swap process for {member1} and {member2}")
 
         # 각 멤버의 가장 가까운 미래 스케줄 조회
         schedule1 = get_nearest_future_schedule(member1, today_str)
@@ -176,7 +183,7 @@ def process_swap_in_background(response_url, member1, member2, today_str):
                 f"'{member1}'의 향후 온콜 일정을 찾을 수 없습니다."
             )
             print(f"Schedule not found for {member1}, sending error response")
-            result = requests.post(response_url, json=error_response, timeout=5)
+            result = requests.post(response_url, json=error_response, timeout=10)
             print(f"Response sent, status code: {result.status_code}")
             return
 
@@ -186,7 +193,7 @@ def process_swap_in_background(response_url, member1, member2, today_str):
                 f"'{member2}'의 향후 온콜 일정을 찾을 수 없습니다."
             )
             print(f"Schedule not found for {member2}, sending error response")
-            result = requests.post(response_url, json=error_response, timeout=5)
+            result = requests.post(response_url, json=error_response, timeout=10)
             print(f"Response sent, status code: {result.status_code}")
             return
 
@@ -216,8 +223,8 @@ def process_swap_in_background(response_url, member1, member2, today_str):
         )
 
         # response_url로 결과 전송
-        print(f"Sending result to response_url: {response_url}")
-        result = requests.post(response_url, json=slack_response, timeout=5)
+        print(f"Sending result to response_url")
+        result = requests.post(response_url, json=slack_response, timeout=10)
         print(f"Response sent successfully, status code: {result.status_code}")
 
     except Exception as e:
@@ -231,7 +238,8 @@ def process_swap_in_background(response_url, member1, member2, today_str):
         }
 
         try:
-            requests.post(response_url, json=error_response, timeout=5)
+            requests.post(response_url, json=error_response, timeout=10)
+            print(f"Error response sent")
         except Exception as req_error:
             print(f"Failed to send error response: {req_error}")
 
@@ -253,6 +261,7 @@ class handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         """POST 요청 처리 (Slack slash command)"""
+        executor = None
         try:
             # POST 데이터 읽기
             content_length = int(self.headers.get('Content-Length', 0))
@@ -290,6 +299,12 @@ class handler(BaseHTTPRequestHandler):
             today = get_kst_now()
             today_str = format_date(today)
 
+            # ThreadPoolExecutor를 사용하여 백그라운드 작업 시작
+            executor = ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(send_delayed_response, response_url, member1, member2, today_str)
+
+            print(f"Background task submitted")
+
             # 즉시 200 응답 반환 (Slack 3초 타임아웃 방지)
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -301,17 +316,15 @@ class handler(BaseHTTPRequestHandler):
             }
             self.wfile.write(json.dumps(immediate_response, ensure_ascii=False).encode('utf-8'))
 
-            print(f"Immediate response sent, starting background thread")
+            print(f"Immediate response sent")
 
-            # 백그라운드 스레드에서 실제 작업 처리
-            thread = threading.Thread(
-                target=process_swap_in_background,
-                args=(response_url, member1, member2, today_str),
-                daemon=False  # 메인 프로세스가 종료되어도 스레드 유지
-            )
-            thread.start()
-
-            print(f"Background thread started")
+            # future가 완료될 때까지 기다림 (최대 10초)
+            # 이렇게 하면 serverless function이 종료되기 전에 작업이 완료됨
+            try:
+                future.result(timeout=10)
+                print(f"Background task completed")
+            except Exception as e:
+                print(f"Background task error: {e}")
 
         except Exception as e:
             print(f"Error in handler: {e}")
@@ -329,3 +342,8 @@ class handler(BaseHTTPRequestHandler):
             }
 
             self.wfile.write(json.dumps(error_response, ensure_ascii=False).encode('utf-8'))
+
+        finally:
+            # Executor 정리
+            if executor:
+                executor.shutdown(wait=False)
