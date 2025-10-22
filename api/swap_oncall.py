@@ -59,24 +59,34 @@ def get_nearest_future_schedule(member_name, today_str):
         print(f"Error getting schedule for {member_name}: {e}")
         return None
 
-def swap_schedules(schedule1, schedule2):
+def swap_schedules(original_schedule1, original_schedule2):
     """두 스케줄의 담당자를 서로 바꿈"""
     try:
-        # 첫 번째 스케줄 업데이트
-        supabase.table('oncall_rotation') \
-            .update({'member': schedule2['member']}) \
-            .eq('id', schedule1['id']) \
-            .execute()
+        # 원본 멤버 이름을 미리 저장 (참조 문제 방지)
+        member1 = original_schedule1['member']
+        member2 = original_schedule2['member']
 
-        # 두 번째 스케줄 업데이트
-        supabase.table('oncall_rotation') \
-            .update({'member': schedule1['member']}) \
-            .eq('id', schedule2['id']) \
+        print(f"Swapping: {member1} (id={original_schedule1['id']}) <-> {member2} (id={original_schedule2['id']})")
+
+        # 첫 번째 스케줄 업데이트: schedule1에 member2 할당
+        result1 = supabase.table('oncall_rotation') \
+            .update({'member': member2}) \
+            .eq('id', original_schedule1['id']) \
             .execute()
+        print(f"Updated schedule {original_schedule1['id']} to {member2}")
+
+        # 두 번째 스케줄 업데이트: schedule2에 member1 할당
+        result2 = supabase.table('oncall_rotation') \
+            .update({'member': member1}) \
+            .eq('id', original_schedule2['id']) \
+            .execute()
+        print(f"Updated schedule {original_schedule2['id']} to {member1}")
 
         return True
     except Exception as e:
         print(f"Error swapping schedules: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def format_slack_response(success, member1, member2, schedule1, schedule2, error_msg=None):
@@ -168,7 +178,7 @@ def send_delayed_response(response_url, member1, member2, today_str):
     """
     try:
         # 약간의 지연을 주어 메인 응답이 먼저 전송되도록 함
-        time.sleep(0.5)
+        time.sleep(1.5)
 
         print(f"Starting swap process for {member1} and {member2}")
 
