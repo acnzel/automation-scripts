@@ -61,32 +61,41 @@ def get_nearest_future_schedule(member_name, today_str):
 
 def swap_schedules(original_schedule1, original_schedule2):
     """두 스케줄의 담당자를 서로 바꿈"""
+    import sys
     try:
         # 원본 멤버 이름을 미리 저장 (참조 문제 방지)
         member1 = original_schedule1['member']
         member2 = original_schedule2['member']
 
-        print(f"Swapping: {member1} (id={original_schedule1['id']}) <-> {member2} (id={original_schedule2['id']})")
+        sys.stderr.write(f"[SWAP] Before: id={original_schedule1['id']} has {member1}, id={original_schedule2['id']} has {member2}\n")
+        sys.stderr.flush()
 
         # 첫 번째 스케줄 업데이트: schedule1에 member2 할당
         result1 = supabase.table('oncall_rotation') \
             .update({'member': member2}) \
             .eq('id', original_schedule1['id']) \
             .execute()
-        print(f"Updated schedule {original_schedule1['id']} to {member2}")
+
+        sys.stderr.write(f"[SWAP] Updated id={original_schedule1['id']} to {member2}\n")
+        sys.stderr.write(f"[SWAP] Result1 data: {result1.data}\n")
+        sys.stderr.flush()
 
         # 두 번째 스케줄 업데이트: schedule2에 member1 할당
         result2 = supabase.table('oncall_rotation') \
             .update({'member': member1}) \
             .eq('id', original_schedule2['id']) \
             .execute()
-        print(f"Updated schedule {original_schedule2['id']} to {member1}")
+
+        sys.stderr.write(f"[SWAP] Updated id={original_schedule2['id']} to {member1}\n")
+        sys.stderr.write(f"[SWAP] Result2 data: {result2.data}\n")
+        sys.stderr.flush()
 
         return True
     except Exception as e:
-        print(f"Error swapping schedules: {e}")
+        sys.stderr.write(f"[ERROR] Error swapping schedules: {e}\n")
         import traceback
-        traceback.print_exc()
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
         return False
 
 def format_slack_response(success, member1, member2, schedule1, schedule2, error_msg=None):
@@ -188,6 +197,10 @@ def send_delayed_response(response_url, member1, member2, today_str):
         # 각 멤버의 가장 가까운 미래 스케줄 조회
         schedule1 = get_nearest_future_schedule(member1, today_str)
         schedule2 = get_nearest_future_schedule(member2, today_str)
+
+        sys.stderr.write(f"[DEBUG] Found schedule1: {schedule1}\n")
+        sys.stderr.write(f"[DEBUG] Found schedule2: {schedule2}\n")
+        sys.stderr.flush()
 
         # 스케줄 존재 여부 확인
         if not schedule1:
