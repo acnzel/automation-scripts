@@ -193,8 +193,9 @@ def send_delayed_response(response_url, member1, member2, today_str):
                 f"'{member1}'의 향후 온콜 일정을 찾을 수 없습니다."
             )
             print(f"Schedule not found for {member1}, sending error response")
+            print(f"Error payload: {json.dumps(error_response, ensure_ascii=False)}")
             result = requests.post(response_url, json=error_response, timeout=10)
-            print(f"Response sent, status code: {result.status_code}")
+            print(f"Error response sent, status code: {result.status_code}, body: {result.text}")
             return
 
         if not schedule2:
@@ -203,8 +204,9 @@ def send_delayed_response(response_url, member1, member2, today_str):
                 f"'{member2}'의 향후 온콜 일정을 찾을 수 없습니다."
             )
             print(f"Schedule not found for {member2}, sending error response")
+            print(f"Error payload: {json.dumps(error_response, ensure_ascii=False)}")
             result = requests.post(response_url, json=error_response, timeout=10)
-            print(f"Response sent, status code: {result.status_code}")
+            print(f"Error response sent, status code: {result.status_code}, body: {result.text}")
             return
 
         # 원본 스케줄 정보 저장 (응답 메시지용)
@@ -233,9 +235,11 @@ def send_delayed_response(response_url, member1, member2, today_str):
         )
 
         # response_url로 결과 전송
-        print(f"Sending result to response_url")
+        print(f"Sending result to response_url: {response_url}")
+        print(f"Response payload: {json.dumps(slack_response, ensure_ascii=False)}")
         result = requests.post(response_url, json=slack_response, timeout=10)
         print(f"Response sent successfully, status code: {result.status_code}")
+        print(f"Response body: {result.text}")
 
     except Exception as e:
         print(f"Error in background processing: {e}")
