@@ -168,6 +168,7 @@ def format_slack_response(success, member1, member2, schedule1, schedule2, error
 
     return {
         'response_type': 'in_channel',
+        'text': f'✅ {member1}와 {member2}의 온콜 일정이 교체되었습니다.',
         'blocks': blocks
     }
 
@@ -179,7 +180,7 @@ def send_delayed_response(response_url, member1, member2, today_str):
     import sys
     try:
         # 약간의 지연을 주어 메인 응답이 먼저 전송되도록 함
-        time.sleep(1.5)
+        time.sleep(3.0)
 
         sys.stderr.write(f"[DEBUG] Starting swap process for {member1} and {member2}\n")
         sys.stderr.flush()
